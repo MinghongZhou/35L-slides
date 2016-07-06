@@ -1,0 +1,77 @@
+First I downladed the coreutils zip file from the website provided.
+
+wget http://web.cs.ucla.edu/classes/spring16/cs35L/assign/coreutils-with-bug.tar.gz
+
+Then I decompress this zip file to get the coreutils folder
+tar -xzvf coreutils-with-bug.tar.gz
+
+cd coreutils-with-bug
+
+building coreutils
+./configure
+make
+This resulted in an error:
+In file included from utimecmp.c:41:0:
+utimens.h:2:5: error: conflicting types for 'futimens'
+ int futimens (int, char const *, struct timespec const [2]);
+      ^
+      In file included from utimecmp.h:25:0,
+                       from utimecmp.c:25:
+/usr/include/sys/stat.h:373:12: note: previous declaration of 'futimens' was here
+extern int futimens (int __fd, const struct timespec __times[2]) __THROW;
+
+            ^
+Makefile:659: recipe for target 'utimecmp.o' failed
+Judging from the error messgae, it seems that the problem of building occurs since there are two methods named futimens.
+
+build again with the renaming patch
+wget http://web.cs.ucla.edu/classes/spring16/cs35L/assign/coreutils.diff
+patch -p0 < ~/Desktop/lab5/coreutils.diff
+./configure CFLAGS="-g -O0"
+make
+
+$ tmp=$(mktemp -d)
+$ cd $tmp
+$ touch -d '1918-11-11 11:00 GMT' wwi-armistice
+$ touch now
+$ sleep 1
+$ touch now1
+$ TZ=UTC0 ls -lt --full-time wwi-armistice now now1
+-rw-r--r-- 1 minghong chugrad 0 1918-11-11 11:00:00.000000000 +0000 wwi-armistice
+-rw-r--r-- 1 minghong chugrad 0 2016-04-26 19:36:30.782110997 +0000 now1
+-rw-r--r-- 1 minghong chugrad 0 2016-04-26 19:36:20.700952103 +0000 now
+$ cd
+$ rm -fr
+
+As exemplified by the above outputs, the ls promblem can be run, but it produces a incorrect result. Instead of displaying the earliest date last, it does the opposite. 
+The renaming patch resolve the problem that arise from the syntatical error. What is left to be taken care of are the logical errors. Therefore, I have successfully reproduce the bugs. 
+
+Debugging:
+
+gdb ~/Desktop/lab5/coreutils-with-bug/src/ls
+(gdb) break sort_files
+(gdb) break compare_mtime
+(gdb) break rev_cmp_mtime
+(gdb) break cmp_mtime
+
+(gdb) run -lt wwi-armistice now now1
+
+I set up for breakpoints that are related to the handling of time of the program, then I started the program taking three files as input. 
+
+I noticed that all the comparing functions eventually call the function timespec_cmp function in timespec.h
+
+Then I opened that file to examine it.
+cd ..
+cd lib
+emacs timespec.h
+generate a patch to timespec.h in the form of .diff with the following
+diff -u timespec.h newtimespec.h > lab5.diff
+
+#Apply patch
+
+patch -p1 < ./lab5.diff
+File to patch: timespec.h
+
+How well does seasNet do?
+The default ls program convert the file dated at 1918 to a file dated at 2056, because that is what ls do to prevent overloading.  
+
